@@ -87,10 +87,12 @@ public:
         wait(clk.posedge_event());
         for(int i = 0; i < NumberOfIterations; ++i) {
             SCCDEBUG("testbench") << "executing transactions in iteration " << i;
-            { // 1
+            { // 1 write
                 tlm::scc::tlm_gp_shared_ptr trans = prepare_trans(BurstLengthByte);
-                trans->set_command(tlm::TLM_READ_COMMAND);
+                trans->set_command(tlm::TLM_WRITE_COMMAND);
                 trans->set_address(StartAddr);
+                unsigned char* data_ptr = trans->get_data_ptr();
+                std::memcpy(data_ptr,&StartAddr,sizeof(StartAddr));
                 generic_extension<axi::axi_target_socket<SOCKET_WIDTH>> *generic_ext = trans->get_extension<generic_extension<axi::axi_target_socket<SOCKET_WIDTH>>>();
                 if (generic_ext != NULL)
                 {
@@ -101,22 +103,26 @@ public:
                 if(trans->get_response_status() != tlm::TLM_OK_RESPONSE)
                     SCCERR() << "Invalid response status" << trans->get_response_string();
             }
-            StartAddr += BurstLengthByte;
-            // { // 2
-            //     tlm::scc::tlm_gp_shared_ptr trans = prepare_trans(BurstLengthByte);
-            //     trans->set_command(tlm::TLM_WRITE_COMMAND);
-            //     trans->set_address(StartAddr+0x1000);
-            //     generic_extension<axi::axi_target_socket<SOCKET_WIDTH>> *generic_ext = trans->get_extension<generic_extension<axi::axi_target_socket<SOCKET_WIDTH>>>();
-            //     if (generic_ext != NULL)
-            //     {
-            //         generic_ext->set_bw_if_ptr(simple_axi_bus.target_socket[1]); // assign pointer master1
-            //     }
-            //     auto delay = SC_ZERO_TIME;
-            //     top_isck_m1->b_transport(*trans, delay);
-            //     if(trans->get_response_status() != tlm::TLM_OK_RESPONSE)
-            //         SCCERR() << "Invalid response status" << trans->get_response_string();
-            // }
-            // StartAddr += BurstLengthByte;
+            // wait(100, SC_NS);
+            { // 2 read and compare
+                tlm::scc::tlm_gp_shared_ptr trans = prepare_trans(BurstLengthByte);
+                trans->set_command(tlm::TLM_READ_COMMAND);
+                trans->set_address(StartAddr);
+                unsigned char* data_ptr = trans->get_data_ptr();
+                generic_extension<axi::axi_target_socket<SOCKET_WIDTH>> *generic_ext = trans->get_extension<generic_extension<axi::axi_target_socket<SOCKET_WIDTH>>>();
+                if (generic_ext != NULL)
+                {
+                    generic_ext->set_bw_if_ptr(simple_axi_bus.target_socket[0]); // assign pointer master1
+                }
+                auto delay = SC_ZERO_TIME;
+                top_isck_m1->b_transport(*trans, delay);
+                if(*((unsigned int*)data_ptr) != StartAddr){
+                    SCCERR() << "FAIL data: "<< *((unsigned int*)data_ptr) << " expected: " << StartAddr;
+                }
+                if(trans->get_response_status() != tlm::TLM_OK_RESPONSE)
+                    SCCERR() << "Invalid response status" << trans->get_response_string();
+            }
+            StartAddr += BurstLengthByte*64;
         }
         wait(100, SC_NS);
         sc_stop();
